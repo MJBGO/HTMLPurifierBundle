@@ -2,20 +2,27 @@
 
 namespace Exercise\HTMLPurifierBundle\DependencyInjection;
 
+use Exercise\HTMLPurifierBundle\CacheWarmer\SerializerCacheWarmer;
+use Exercise\HTMLPurifierBundle\HtmlPurifiersRegistry;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\DependencyInjection\Loader\XmlFileLoader;
 use Symfony\Component\HttpKernel\DependencyInjection\Extension;
-use Symfony\Component\DependencyInjection\ContainerInterface;
 
 class ExerciseHTMLPurifierExtension extends Extension
 {
     public function load(array $configs, ContainerBuilder $container)
     {
         $loader = new XmlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'));
-        $loader->load('html_purifier.xml');
+
+        if (!method_exists($container, 'getReflectionClass')) {
+            $loader->load('legacy_html_purifier.xml');
+        } else {
+            $loader->load('html_purifier.xml');
+        }
 
         /* Prepend the default configuration. This cannot be defined within the
          * Configuration class, since the root node's children are array
@@ -32,60 +39,38 @@ class ExerciseHTMLPurifierExtension extends Extension
         ));
 
         $configs = $this->processConfiguration(new Configuration(), $configs);
-        $configs = array_map(array($this, 'resolveServices'), $configs);
-        $paths = array();
+
+        $paths = [];
+        $registry = $container->register(HtmlPurifiersRegistry::class);
 
         foreach ($configs as $name => $config) {
-            $configDefinition = new Definition('%exercise_html_purifier.config.class%');
-			
-            // Handle Symfony >= 2.7
-            if (method_exists($configDefinition, 'setFactory')) {
-                if ('default' === $name) {
-                    $configDefinition
-                        ->setFactory(array('%exercise_html_purifier.config.class%', 'create'))
-                        ->addArgument($config);
-                } else {
-                    $configDefinition
-                        ->setFactory(array('%exercise_html_purifier.config.class%', 'inherit'))
-                        ->addArgument(new Reference('exercise_html_purifier.config.default'))
-                        ->addMethodCall('loadArray', array($config));
-                }
-            }
-            // Handle Symfony < 2.7
-            else {
-                $configDefinition->setFactoryClass('%exercise_html_purifier.config.class%');
+            $config = array_map([$this, 'resolveServices'], $config);
 
-                if ('default' === $name) {
-                    $configDefinition
-                        ->setFactoryMethod('create')
-                        ->addArgument($config);
-                } else {
-                    $configDefinition
-                        ->setFactoryMethod('inherit')
-                        ->addArgument(new Reference('exercise_html_purifier.config.default'))
-                        ->addMethodCall('loadArray', array($config));
-                }
-            }
+            $configId = 'exercise_html_purifier.config.'.$name;
 
-            $configId = 'exercise_html_purifier.config.' . $name;
-            $container->setDefinition($configId, $configDefinition);
+            $container->register($configId, \HTMLPurifier_Config::class)
+                ->setFactory([\HTMLPurifier_Config::class, 'create'])
+                ->setArguments([$config])
+                ->setPublic(false)
+            ;
 
-            $container->setDefinition(
-                'exercise_html_purifier.' . $name,
-                new Definition('%exercise_html_purifier.class%', array(new Reference($configId)))
-            );
+            $purifierId = 'exercise_html_purifier.'.$name;
+
+            $container->setDefinition($purifierId, new Definition(\HTMLPurifier::class, [new Reference($configId)]));
+            $registry->addMethodCall('add', [$name, new Reference($purifierId)]);
 
             if (isset($config['Cache.SerializerPath'])) {
                 $paths[] = $config['Cache.SerializerPath'];
             }
         }
 
-        $container->setParameter('exercise_html_purifier.cache_warmer.serializer.paths', array_unique($paths));
+        $container->setParameter('exercise_html_purifier.cache_warmer.serializer.paths', $paths);
+        $container->setAlias(\HTMLPurifier::class, 'exercise_html_purifier.default');
     }
 
     public function getAlias()
     {
-        return 'exercise_html_purifier';
+        return 'heah_html_purifier';
     }
 
     private function resolveServices($value)
@@ -101,14 +86,7 @@ class ExerciseHTMLPurifierExtension extends Extension
                 $invalidBehavior = ContainerInterface::EXCEPTION_ON_INVALID_REFERENCE;
             }
 
-            if ('=' === substr($value, -1)) {
-                $value = substr($value, 0, -1);
-                $strict = false;
-            } else {
-                $strict = true;
-            }
-
-            $value = new Reference($value, $invalidBehavior, $strict);
+            $value = new Reference($value, $invalidBehavior);
         }
 
         return $value;

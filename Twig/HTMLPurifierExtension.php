@@ -2,73 +2,53 @@
 
 namespace Exercise\HTMLPurifierBundle\Twig;
 
-use Symfony\Component\DependencyInjection\ContainerInterface;
+use Exercise\HTMLPurifierBundle\HtmlPurifiersRegistry;
+use Twig\Extension\AbstractExtension;
+use Twig\TwigFilter;
 
-class HTMLPurifierExtension extends \Twig_Extension
+class HTMLPurifierExtension extends AbstractExtension
 {
-    private $container;
+    private $purifiersRegistry = [];
 
-    private $purifiers = array();
-
-    /**
-     * Constructor.
-     *
-     * @param \HTMLPurifier $purifier
-     */
-    public function __construct(ContainerInterface $container)
+    public function __construct(HtmlPurifiersRegistry $registry)
     {
-        $this->container = $container;
+        $this->purifiersRegistry = $registry;
     }
 
     /**
-     * @see Twig_Extension::getFilters()
+     * {@inheritdoc}
      */
     public function getFilters()
     {
         return array(
-            new \Twig_SimpleFilter('purify', array($this, 'purify'), array('is_safe' => array('html'))),
+            new TwigFilter('purify', array($this, 'purify'), array('is_safe' => array('html'))),
         );
     }
 
     /**
-     * Filter the input through an HTMLPurifier service.
+     * Filters the input through an \HTMLPurifier service.
      *
-     * @param string $string
-     * @param string $profile
-     * @return string
+     * @param string $string  The html string to purify
+     * @param string $profile A configuration profile name
+     *
+     * @return string The purified html string
      */
-    public function purify($string, $profile = 'default')
+    public function purify(string $string, string $profile = 'default')
     {
         return $this->getHTMLPurifierForProfile($profile)->purify($string);
     }
 
     /**
-     * Get the HTMLPurifier service corresponding to the given profile.
+     * Gets the HTMLPurifier service corresponding to the given profile.
      *
      * @param string $profile
+     *
      * @return \HTMLPurifier
-     * @throws \RuntimeException
+     *
+     * @throws \InvalidArgumentException If the profile does not exist
      */
-    private function getHTMLPurifierForProfile($profile)
+    private function getHTMLPurifierForProfile(string $profile): \HTMLPurifier
     {
-        if (!isset($this->purifiers[$profile])) {
-            $purifier = $this->container->get('exercise_html_purifier.' . $profile);
-
-            if (!$purifier instanceof \HTMLPurifier) {
-                throw new \RuntimeException(sprintf('Service "exercise_html_purifier.%s" is not an HTMLPurifier instance.', $profile));
-            }
-
-            $this->purifiers[$profile] = $purifier;
-        }
-
-        return $this->purifiers[$profile];
-    }
-
-    /**
-     * @see Twig_ExtensionInterface::getName()
-     */
-    public function getName()
-    {
-        return 'html_purifier';
+        return $this->purifiersRegistry->get($profile);
     }
 }
