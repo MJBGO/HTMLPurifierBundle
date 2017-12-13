@@ -9,6 +9,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\DependencyInjection\Loader\XmlFileLoader;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\HttpKernel\DependencyInjection\Extension;
 
 class ExerciseHTMLPurifierExtension extends Extension
@@ -39,7 +40,19 @@ class ExerciseHTMLPurifierExtension extends Extension
 
         $configs = $this->processConfiguration(new Configuration(), $configs);
         $configs = array_map([$this, 'resolveServices'], $configs);
+
+        $purifiers = [];
+        $purifiersLocator = null;
         $registry = $container->register(HTMLPurifiersRegistry::class);
+
+        if (class_exists(ServiceLocator::class)) {
+            $purifiersLocator = $container
+                ->register('exercise_html_purifier.purifiers_locator', ServiceLocator::class)
+                ->addTag('container.service_locator')
+            ;
+            $registry->setArguments([$purifiersLocator]);
+        }
+
         $serializerPaths = [];
 
         foreach ($configs as $name => $config) {
@@ -54,11 +67,20 @@ class ExerciseHTMLPurifierExtension extends Extension
             $purifierId = 'exercise_html_purifier.'.$name;
 
             $container->setDefinition($purifierId, new Definition(\HTMLPurifier::class, [new Reference($configId)]));
-            $registry->addMethodCall('add', [$name, new Reference($purifierId)]);
+
+            if ($purifiersLocator) {
+                $purifiers[$name] = new Reference($purifierId);
+            } else {
+                $registry->addMethodCall('add', [$name, new Reference($purifierId)]);
+            }
 
             if (isset($config['Cache.SerializerPath'])) {
                 $serializerPaths[] = $config['Cache.SerializerPath'];
             }
+        }
+
+        if ($purifiersLocator) {
+            $purifiersLocator->setArguments([$purifiers]);
         }
 
         $container->setParameter('exercise_html_purifier.cache_warmer.serializer.paths', array_unique($serializerPaths));
