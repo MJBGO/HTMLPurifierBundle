@@ -43,7 +43,7 @@ class HTMLPurifierTextTypeExtension extends AbstractTypeExtension
                 return $profile;
             })
             ->setAllowedTypes('purify_html_config', ['null', 'array', '\HtmlPurifer_Config'])
-            ->setNormalizer('html_purifier_config', function (Options $options, $config) {
+            ->setNormalizer('purify_html_config', function (Options $options, $config) {
                 if (is_array($config) && [] !== $config) {
                     // Ensure the config is valid on build form time
                     return \HTMLPurifier_Config::create($config);
