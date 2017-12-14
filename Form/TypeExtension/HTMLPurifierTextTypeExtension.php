@@ -32,18 +32,31 @@ class HTMLPurifierTextTypeExtension extends AbstractTypeExtension
                 'purify_html' => false,
                 'purify_html_profile' => 'default',
                 'purify_html_config' => null,
+                'trim' => function (Options $options) {
+                    // trim is done in the HTMLPurifierListener
+                    return !$options['purify_html'];
+                }
             ])
             ->setAllowedTypes('purify_html', 'bool')
             ->setAllowedTypes('purify_html_profile', 'string')
             ->setNormalizer('purify_html_profile', function (Options $options, $profile) {
-                if (!$this->purifiersRegistry->has($profile)) {
-                    throw new InvalidConfigurationException(sprintf('The profile "%s" is not registered.', $profile));
+                if (!$options['purify_html']) {
+                    return null;
                 }
 
-                return $profile;
+                if ($this->purifiersRegistry->has($profile)) {
+                    return $profile;
+                }
+
+                throw new InvalidConfigurationException(sprintf('The profile "%s" is not registered.', $profile));
+
             })
             ->setAllowedTypes('purify_html_config', ['null', 'array', '\HtmlPurifer_Config'])
             ->setNormalizer('purify_html_config', function (Options $options, $config) {
+                if (!$options['purify_html']) {
+                    return null;
+                }
+
                 if (is_array($config) && [] !== $config) {
                     // Ensure the config is valid on build form time
                     return \HTMLPurifier_Config::create($config);

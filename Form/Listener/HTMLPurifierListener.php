@@ -19,9 +19,14 @@ class HTMLPurifierListener implements EventSubscriberInterface
 
     public function purifySubmittedData(FormEvent $event): void
     {
-        $submittedData = (string) $event->getData();
+        if (!is_scalar($event->getData())) {
+            // Hope there is a view transformer, otherwise an error might happen
+            return; // because we don't want to handle it here
+        }
 
-        if (empty($submittedData)) {
+        $submittedData = trim($event->getData());
+
+        if (0 === strlen($submittedData)) {
             return;
         }
 
@@ -31,7 +36,7 @@ class HTMLPurifierListener implements EventSubscriberInterface
     public static function getSubscribedEvents()
     {
         return [
-            FormEvents::PRE_SUBMIT => ['purifySubmittedData', -1024],
+            FormEvents::PRE_SUBMIT => ['purifySubmittedData', /* as soon as possible */ 1000000],
         ];
     }
 }
