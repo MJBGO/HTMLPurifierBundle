@@ -57,12 +57,20 @@ class ExerciseHTMLPurifierExtension extends Extension
 
         foreach ($configs as $name => $config) {
             $configId = 'exercise_html_purifier.config.'.$name;
+            $configDefinition = $container->register($configId, \HTMLPurifier_Config::class)->setPublic(false);
 
-            $container->register($configId, \HTMLPurifier_Config::class)
-                ->setFactory([\HTMLPurifier_Config::class, 'create'])
-                ->setArguments([$config])
-                ->setPublic(false)
-            ;
+            if ('default' === $name) {
+                $configDefinition
+                    ->setFactory([\HTMLPurifier_Config::class, 'create'])
+                    ->addArgument($config)
+                ;
+            } else {
+                $configDefinition
+                    ->setFactory([\HTMLPurifier_Config::class, 'inherit'])
+                    ->addArgument(new Reference('exercise_html_purifier.config.default'))
+                    ->addMethodCall('loadArray', [$config])
+                ;
+            }
 
             $purifierId = 'exercise_html_purifier.'.$name;
 
